@@ -1,26 +1,33 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import * as fs from 'fs';
+import { App, Editor, FileSystemAdapter, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	mySetting: string;
+
+interface SymlinkToggleSettings {
+	symlinkTarget: string;
+	symlinkPath: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: SymlinkToggleSettings = {
+	symlinkTarget: '',
+	symlinkPath: ''
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class SymlinkToggle extends Plugin {
+	settings: SymlinkToggleSettings;
 
 	async onload() {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			this.toggleSymlink(
+				this.settings.symlinkTarget,
+				this.settings.symlinkPath
+			);
+
 		});
+
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
@@ -89,6 +96,40 @@ export default class MyPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+
+	async toggleSymlink(target: string, pathForSymlink: string) {
+		let adapter = this.app.vault.adapter;
+		let absPathForSymlink = '';
+		if (adapter instanceof FileSystemAdapter) {
+			absPathForSymlink = adapter.getBasePath() + '/' + pathForSymlink;
+		} else {
+			new Notice('Symlink toggle error: adapter not FileSystemAdapter');
+			return;
+		}
+
+		try {
+			const result = await checkFile(absPathForSymlink);
+			if (result) {
+				// delete the symlink
+				fs.unlink(absPathForSymlink, (err) => {
+					if (err) {
+						throw err;
+					}
+					new Notice('Symlink deleted');
+				});
+			} else {
+				// create the symlink
+				fs.symlink(target, absPathForSymlink, (err) => {
+					if (err) {
+						throw err;
+					}
+					new Notice('Symlink created: ' + absPathForSymlink + ' -> ' + target);
+				});
+			}
+		} catch (err) {
+			new Notice('Symlink toggle error: ' + err);
+		}
+	}
 }
 
 class SampleModal extends Modal {
@@ -97,38 +138,67 @@ class SampleModal extends Modal {
 	}
 
 	onOpen() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.setText('Woah!');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
 
 class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+	plugin: SymlinkToggle;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: SymlinkToggle) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('Symlink target')
+			.setDesc('The path (directory) to be symlinked')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('...')
+				.setValue(this.plugin.settings.symlinkTarget)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.symlinkTarget = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Symlink path')
+			.setDesc('The location to create the symlink')
+			.addText(text => text
+				.setPlaceholder('...')
+				.setValue(this.plugin.settings.symlinkPath)
+				.onChange(async (value) => {
+					this.plugin.settings.symlinkPath = value;
 					await this.plugin.saveSettings();
 				}));
 	}
+}
+
+
+function checkFile(path: string): Promise<boolean> {
+	return new Promise((resolve, reject) => {
+		fs.lstat(path, (err, stats) => {
+			if (err) {
+				if (err.code === 'ENOENT') {
+					resolve(false);
+				} else {
+					reject('Error: ' + err.message);
+				}
+				return;
+			}
+
+			resolve(true)
+		});
+	});
 }
