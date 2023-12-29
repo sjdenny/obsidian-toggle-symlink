@@ -20,7 +20,8 @@ export default class SymlinkToggle extends Plugin {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
+		const ribbonLabel = 'Toggle "' + this.settings.symlinkPath + '"';
+		const ribbonIconEl = this.addRibbonIcon('dice', ribbonLabel, (evt: MouseEvent) => {
 			this.toggleSymlink(
 				this.settings.symlinkTarget,
 				this.settings.symlinkPath
