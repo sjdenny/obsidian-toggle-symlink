@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: SymlinkToggleSettings = {
 
 export default class SymlinkToggle extends Plugin {
 	settings: SymlinkToggleSettings;
+	statusBar: HTMLElement;
 
 	async onload() {
 		await this.loadSettings();
@@ -26,7 +27,6 @@ export default class SymlinkToggle extends Plugin {
 				this.settings.symlinkTarget,
 				this.settings.symlinkPath
 			);
-
 		});
 
 		// Perform additional things with the ribbon
@@ -34,6 +34,15 @@ export default class SymlinkToggle extends Plugin {
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
+
+		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
+		this.statusBar = this.addStatusBarItem();
+		try {
+			const symlinkExists = await checkFile(this.pathForSymlink(this.settings.symlinkPath));
+			this.setStatusBar(symlinkExists);
+		} catch (err) {
+			new Notice('Status bar error: ' + err);
+		}
 	}
 
 	onunload() {
@@ -46,6 +55,26 @@ export default class SymlinkToggle extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	async setStatusBar(symlinkExists: boolean) {
+		if (symlinkExists) {
+			this.statusBar.setText('🚨 "' + this.settings.symlinkPath + '/" present');
+		} else {
+			this.statusBar.setText('😌');
+		}
+	}
+
+	pathForSymlink(relPath: string): string {
+		let adapter = this.app.vault.adapter;
+		let absPathForSymlink = '';
+		if (adapter instanceof FileSystemAdapter) {
+			absPathForSymlink = adapter.getBasePath() + '/' + relPath;
+			return absPathForSymlink;
+		} else {
+			new Notice('Symlink toggle error: adapter not FileSystemAdapter');
+			return '';
+		}
 	}
 
 	async toggleSymlink(target: string, pathForSymlink: string) {
@@ -66,7 +95,7 @@ export default class SymlinkToggle extends Plugin {
 					if (err) {
 						throw err;
 					}
-					new Notice('Symlink deleted');
+					this.setStatusBar(false);
 				});
 			} else {
 				// create the symlink
@@ -74,7 +103,7 @@ export default class SymlinkToggle extends Plugin {
 					if (err) {
 						throw err;
 					}
-					new Notice('Symlink created: ' + absPathForSymlink + ' -> ' + target);
+					this.setStatusBar(true);
 				});
 			}
 		} catch (err) {
